@@ -1,0 +1,19 @@
+<!-- Arrow Escape emblem, vector master. Same geometry as
+     ArrowEscapeEmblemPainter (lib/ui/widgets/game_logo_widget.dart), which
+     renders all PNG icons. Original artwork. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3EA2FF"/>
+      <stop offset="1" stop-color="#1A56DB"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="235.5" fill="url(#tile)"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="860,471 860,860 164,860 164,164 635,164" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="46"/>
+    <polyline points="676,737 676,594" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="61"/>
+    <polyline points="307,737 307,492 512,492 512,328 819,328" stroke="#FFFFFF" stroke-width="97"/>
+  </g>
+  <polygon points="676,543 602,616 676,580 750,616" fill="#FFFFFF" fill-opacity="0.55"/>
+  <polygon points="922,328 697,204 753,328 697,452" fill="#FFFFFF"/>
+</svg>

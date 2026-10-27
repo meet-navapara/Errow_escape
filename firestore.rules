@@ -1,0 +1,83 @@
+rules_version = '2';
+
+// Arrow Escape: one private progress document per signed-in user at
+// users/{uid} (schema v2, written by lib/core/storage/cloud_sync_service.dart).
+//
+// Limits of client-side protection: these rules stop other users from
+// reading or writing your data, reject malformed documents, and prevent
+// progress and spent power-ups from going backwards. They cannot prove that
+// a reward (e.g. an ad view) really happened; that would need server-side
+// verification such as AdMob server-side verification callbacks.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function powerUpOk(p) {
+      return p is map
+        && p.keys().hasOnly(['granted', 'used'])
+        && p.granted is int && p.used is int
+        && p.granted >= 0 && p.granted <= 100000
+        && p.used >= 0 && p.used <= p.granted;
+    }
+
+    function validProgress(d) {
+      return d.keys().hasOnly([
+          'schemaVersion', 'highestUnlockedLevel', 'completedLevels',
+          'tutorialCompleted', 'tutorialsSeen', 'dailyCompleted',
+          'dailyResults', 'weeklyResults', 'achievements', 'rewardClaims',
+          'powerUps', 'settings', 'createdAt', 'updatedAt', 'lastPlayedAt'])
+        && d.schemaVersion == 2
+        && d.highestUnlockedLevel is int
+        // 1000 campaign levels: level 1001 means everything is complete.
+        && d.highestUnlockedLevel >= 1 && d.highestUnlockedLevel <= 1001
+        && d.completedLevels is list && d.completedLevels.size() <= 1000
+        && d.tutorialCompleted is bool
+        && d.tutorialsSeen is list && d.tutorialsSeen.size() <= 50
+        && d.dailyCompleted is list && d.dailyCompleted.size() <= 5000
+        && d.dailyResults is map
+        && d.weeklyResults is map
+        && d.achievements is list && d.achievements.size() <= 50
+        && d.rewardClaims is list && d.rewardClaims.size() <= 20000
+        && d.settings is map
+        && d.powerUps is map
+        && d.powerUps.keys().hasOnly(['hint', 'eraser', 'wand', 'scanner'])
+        && powerUpOk(d.powerUps.hint) && powerUpOk(d.powerUps.eraser)
+        && powerUpOk(d.powerUps.wand) && powerUpOk(d.powerUps.scanner)
+        && d.updatedAt == request.time;
+    }
+
+    // Progress may only move forward: no lowering levels, removing
+    // completions or achievements, or refunding spent power-ups.
+    function noRegression(before, after) {
+      return after.highestUnlockedLevel >= before.highestUnlockedLevel
+        && after.completedLevels.hasAll(before.completedLevels)
+        && after.dailyCompleted.hasAll(before.dailyCompleted)
+        && after.achievements.hasAll(before.achievements)
+        && after.rewardClaims.hasAll(before.rewardClaims)
+        && after.powerUps.hint.used >= before.powerUps.hint.used
+        && after.powerUps.eraser.used >= before.powerUps.eraser.used
+        && after.powerUps.wand.used >= before.powerUps.wand.used
+        && after.powerUps.scanner.used >= before.powerUps.scanner.used;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && validProgress(request.resource.data);
+      allow update: if isOwner(userId)
+        && validProgress(request.resource.data)
+        // Documents written by app v1 (no schemaVersion) may be upgraded once.
+        && (!('schemaVersion' in resource.data)
+            || noRegression(resource.data, request.resource.data));
+      // Account deletion (Settings > Delete Account).
+      allow delete: if isOwner(userId);
+    }
+
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
