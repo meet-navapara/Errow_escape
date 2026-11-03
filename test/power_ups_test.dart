@@ -306,4 +306,92 @@ void main() {
       },
     );
   });
+
+  group('Out of hearts: continue with an ad', () {
+    Future<GameController> outOfHearts(RewardedAdProvider ads) async {
+      final c = controllerFor(level(), ads: ads);
+      for (var i = 0; i < GameController.maxHearts; i++) {
+        await c.onArrowTapped(a1); // blocked by a2
+        c.clearFeedbackAndUnlock();
+      }
+      expect(c.isGameOver, isTrue);
+      return c;
+    }
+
+    test('a rewarded ad continues the same board with one heart', () async {
+      final ads = FakeAds(RewardedAdOutcome.rewarded);
+      final c = await outOfHearts(ads);
+      final board = c.board;
+      final moves = c.movesCount;
+
+      expect(await c.reviveWithAd(), RewardedAdOutcome.rewarded);
+      expect(ads.shown, 1);
+      expect(c.isGameOver, isFalse);
+      expect(c.isPlayable, isTrue);
+      expect(c.hearts, GameController.reviveHearts);
+      expect(identical(c.board, board), isTrue);
+      expect(c.movesCount, moves);
+
+      // Play goes on normally from where it stopped.
+      await c.onArrowTapped(a2);
+      await c.onArrowTapped(a1);
+      await c.onArrowTapped(free);
+      expect(c.isWon, isTrue);
+    });
+
+    for (final outcome in [
+      RewardedAdOutcome.dismissed,
+      RewardedAdOutcome.failed,
+      RewardedAdOutcome.unavailable,
+    ]) {
+      test('no heart when the ad is ${outcome.name}', () async {
+        final c = await outOfHearts(FakeAds(outcome));
+        expect(await c.reviveWithAd(), outcome);
+        expect(c.isGameOver, isTrue);
+        expect(c.hearts, 0);
+      });
+    }
+
+    test('only while out of hearts, and one ad at a time', () async {
+      final ads = FakeAds(
+        RewardedAdOutcome.rewarded,
+        delay: const Duration(milliseconds: 20),
+      );
+      final playing = controllerFor(level(), ads: ads);
+      expect(await playing.reviveWithAd(), RewardedAdOutcome.unavailable);
+      expect(ads.shown, 0);
+
+      final c = await outOfHearts(ads);
+      final first = c.reviveWithAd();
+      expect(await c.reviveWithAd(), RewardedAdOutcome.unavailable);
+      expect(await first, RewardedAdOutcome.rewarded);
+      expect(ads.shown, 1);
+      expect(c.hearts, GameController.reviveHearts);
+    });
+  });
+
+  group('Between-level interstitials', () {
+    late _FakeInterstitials fake;
+    setUp(() {
+      fake = _FakeInterstitials();
+      AdService.interstitial = fake;
+      AdService.resetInterstitialCadence();
+    });
+    tearDown(() => AdService.interstitial = const NoInterstitialAds());
+
+    test('none during the tutorial, then one every 3 levels', () async {
+      for (var id = 1; id <= 12; id++) {
+        await AdService.showInterstitialBetweenLevels(id);
+      }
+      // Levels 4-12 are nine levels: ads after 6, 9 and 12.
+      expect(fake.shown, 3);
+    });
+  });
+}
+
+class _FakeInterstitials implements InterstitialAdProvider {
+  int shown = 0;
+
+  @override
+  Future<void> show() async => shown++;
 }

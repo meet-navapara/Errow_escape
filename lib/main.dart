@@ -55,12 +55,14 @@ void main() async {
   final auth = AuthService(storage: storage);
   await auth.init();
 
-  // Rewarded ads (optional, consent-gated). Not awaited so startup never
-  // waits on the network or the consent form.
+  // Rewarded and between-level ads (consent-gated). Not awaited so startup
+  // never waits on the network or the consent form.
   if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
     final ads = AdMobRewardedAds();
+    final interstitials = AdMobInterstitialAds();
     AdService.rewarded = ads;
-    unawaited(ads.initialize());
+    AdService.interstitial = interstitials;
+    unawaited(ads.initialize().then((_) => interstitials.preload()));
   }
 
   // Precomputed level pack (~0.5 MB text). Boards are decoded on demand; if

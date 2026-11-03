@@ -341,7 +341,6 @@ class GameController extends ChangeNotifier {
         if (_currentLevel.id == 3) {
           await storage.setTutorialCompleted(true);
         }
-        await AdService.showInterstitialBetweenLevels(_currentLevel.id);
     }
 
     _newAchievements = await AchievementService.evaluate(
@@ -582,6 +581,33 @@ class GameController extends ChangeNotifier {
               'ad_${type.name}_${DateTime.now().microsecondsSinceEpoch}_${_adClaimCounter++}',
         );
         _flash('+1 ${type.label} earned!');
+        sound.playWin();
+        haptic.successVibrate();
+      }
+      notifyListeners();
+      return outcome;
+    } finally {
+      _adInFlight = false;
+    }
+  }
+
+  /// Hearts given back when the player watches an ad after running out.
+  static const int reviveHearts = 1;
+
+  /// After running out of hearts, plays an optional rewarded ad and, only if
+  /// the SDK confirms the reward, continues the same board with
+  /// [reviveHearts] heart(s). The board and move count are kept.
+  Future<RewardedAdOutcome> reviveWithAd() async {
+    if (!_isGameOver || _adInFlight) return RewardedAdOutcome.unavailable;
+    _adInFlight = true;
+    try {
+      final outcome = await (ads ?? AdService.rewarded).showRewarded();
+      if (outcome == RewardedAdOutcome.rewarded && _isGameOver) {
+        _cancelTimers();
+        _clearFeedback();
+        _isInteractionLocked = false;
+        _hearts = reviveHearts;
+        _isGameOver = false;
         sound.playWin();
         haptic.successVibrate();
       }

@@ -38,20 +38,23 @@ class NoRewardedAds implements RewardedAdProvider {
 
 /// Google AdMob rewarded ads, gated by Google UMP consent.
 ///
+/// The production unit is a **Rewarded interstitial** unit in AdMob, so it is
+/// loaded with [RewardedInterstitialAd]; loading it as a plain rewarded ad
+/// fails with a format mismatch. It is still only shown when the player
+/// chooses to watch an ad, and the reward still requires the SDK callback.
+///
 /// Ad unit ids: debug builds use Google's public test ids. Release builds use
 /// the production Android unit below, or ids passed with --dart-define
 /// (ADMOB_REWARDED_ANDROID / ADMOB_REWARDED_IOS); without an id ads stay
 /// unavailable instead of showing test ads in production.
 class AdMobRewardedAds implements RewardedAdProvider {
-  static const _testAndroid = 'ca-app-pub-3940256099942544/5224354917';
-  static const _testIos = 'ca-app-pub-3940256099942544/1712485313';
+  static const _testAndroid = 'ca-app-pub-3940256099942544/5354046379';
+  static const _testIos = 'ca-app-pub-3940256099942544/6978759866';
   static const _releaseAndroid = String.fromEnvironment(
     'ADMOB_REWARDED_ANDROID',
     defaultValue: 'ca-app-pub-1959480289882936/2000572174',
   );
   static const _releaseIos = String.fromEnvironment('ADMOB_REWARDED_IOS');
-
-  bool _initialized = false;
 
   static String? get adUnitId {
     if (kIsWeb) return null;
@@ -64,29 +67,17 @@ class AdMobRewardedAds implements RewardedAdProvider {
     return android ? _testAndroid : _testIos;
   }
 
-  /// Requests consent info and shows the consent form when required (e.g.
-  /// EEA/UK), then initializes the SDK if ads may be requested.
+  /// Requests consent and initializes the SDK (see [AdMobSdk.ensureReady]).
   Future<void> initialize() async {
     if (adUnitId == null) return;
-    try {
-      await ConsentService.gatherConsent();
-      if (await ConsentInformation.instance.canRequestAds()) {
-        await MobileAds.instance.initialize();
-        _initialized = true;
-      }
-    } catch (e) {
-      debugPrint('[AdMob] init failed: $e');
-    }
+    await AdMobSdk.ensureReady();
   }
 
   @override
   Future<RewardedAdOutcome> showRewarded() async {
     final unitId = adUnitId;
     if (unitId == null) return RewardedAdOutcome.unavailable;
-    if (!_initialized) {
-      await initialize();
-      if (!_initialized) return RewardedAdOutcome.unavailable;
-    }
+    if (!await AdMobSdk.ensureReady()) return RewardedAdOutcome.unavailable;
 
     final result = Completer<RewardedAdOutcome>();
     void finish(RewardedAdOutcome o) {
@@ -94,10 +85,10 @@ class AdMobRewardedAds implements RewardedAdProvider {
     }
 
     var earned = false;
-    await RewardedAd.load(
+    await RewardedInterstitialAd.load(
       adUnitId: unitId,
       request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
+      rewardedInterstitialAdLoadCallback: RewardedInterstitialAdLoadCallback(
         onAdLoaded: (ad) {
           ad.fullScreenContentCallback = FullScreenContentCallback(
             onAdDismissedFullScreenContent: (ad) {
@@ -125,6 +116,128 @@ class AdMobRewardedAds implements RewardedAdProvider {
       const Duration(minutes: 3),
       onTimeout: () => RewardedAdOutcome.failed,
     );
+  }
+}
+
+/// Shared one-time AdMob start-up used by rewarded and interstitial ads.
+class AdMobSdk {
+  static Future<bool>? _ready;
+
+  /// Requests consent info, shows the consent form when required (e.g.
+  /// EEA/UK) and initializes the SDK if ads may be requested. A failed
+  /// attempt is retried on the next call.
+  static Future<bool> ensureReady() {
+    return _ready ??= () async {
+      try {
+        await ConsentService.gatherConsent();
+        if (!await ConsentInformation.instance.canRequestAds()) {
+          debugPrint('[AdMob] consent does not allow ad requests yet');
+          _ready = null;
+          return false;
+        }
+        await MobileAds.instance.initialize();
+        return true;
+      } catch (e) {
+        debugPrint('[AdMob] init failed: $e');
+        _ready = null;
+        return false;
+      }
+    }();
+  }
+}
+
+/// Full-screen ad shown at a natural break between levels.
+abstract class InterstitialAdProvider {
+  /// Shows one interstitial if one is ready; completes when it is closed or
+  /// immediately when none is available. Never throws.
+  Future<void> show();
+}
+
+class NoInterstitialAds implements InterstitialAdProvider {
+  const NoInterstitialAds();
+
+  @override
+  Future<void> show() async {}
+}
+
+/// Google AdMob interstitials. One ad is preloaded so it can appear
+/// without a wait when the player moves on to the next level.
+///
+/// Debug builds use Google's public test id. Release builds use the
+/// production unit below or --dart-define=ADMOB_INTERSTITIAL_ANDROID=...;
+/// with no id, interstitials are simply skipped.
+class AdMobInterstitialAds implements InterstitialAdProvider {
+  static const _testAndroid = 'ca-app-pub-3940256099942544/1033173712';
+  static const _testIos = 'ca-app-pub-3940256099942544/4411468910';
+  static const _releaseAndroid = String.fromEnvironment(
+    'ADMOB_INTERSTITIAL_ANDROID',
+    defaultValue: 'ca-app-pub-1959480289882936/5626351797',
+  );
+  static const _releaseIos = String.fromEnvironment('ADMOB_INTERSTITIAL_IOS');
+
+  InterstitialAd? _loaded;
+  bool _loading = false;
+
+  static String? get adUnitId {
+    if (kIsWeb) return null;
+    final android = Platform.isAndroid;
+    if (!android && !Platform.isIOS) return null;
+    if (kReleaseMode) {
+      final id = android ? _releaseAndroid : _releaseIos;
+      return id.isEmpty ? null : id;
+    }
+    return android ? _testAndroid : _testIos;
+  }
+
+  /// Loads the next ad in the background if none is ready.
+  Future<void> preload() async {
+    final unitId = adUnitId;
+    if (unitId == null || _loaded != null || _loading) return;
+    if (!await AdMobSdk.ensureReady()) return;
+    _loading = true;
+    await InterstitialAd.load(
+      adUnitId: unitId,
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          _loading = false;
+          _loaded = ad;
+        },
+        onAdFailedToLoad: (error) {
+          _loading = false;
+          debugPrint('[AdMob] interstitial failed to load: $error');
+        },
+      ),
+    );
+  }
+
+  @override
+  Future<void> show() async {
+    final ad = _loaded;
+    if (ad == null) {
+      unawaited(preload());
+      return;
+    }
+    _loaded = null;
+    final closed = Completer<void>();
+    void done() {
+      if (!closed.isCompleted) closed.complete();
+      unawaited(preload());
+    }
+
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        done();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        debugPrint('[AdMob] interstitial failed to show: $error');
+        ad.dispose();
+        done();
+      },
+    );
+    await ad.show();
+    return closed.future.timeout(const Duration(minutes: 2), onTimeout: () {});
   }
 }
 
@@ -175,17 +288,25 @@ class AdService {
   /// platforms; everywhere else (tests, desktop) no ads are shown.
   static RewardedAdProvider rewarded = const NoRewardedAds();
 
+  /// Between-level ads; main() installs AdMob on supported platforms.
+  static InterstitialAdProvider interstitial = const NoInterstitialAds();
+
   static int _levelsCompletedSinceLastAd = 0;
   static const int interstitialLevelInterval = 3;
 
-  /// Interstitial hook between levels. Interstitials are intentionally not
-  /// shown in this version; this only tracks the cadence (never during the
-  /// tutorial levels 1-3) so a future integration has one place to add it.
+  /// Called when the player taps "Next Level" in the campaign. Shows an
+  /// interstitial after every [interstitialLevelInterval] completed levels,
+  /// never during the tutorial levels 1-3. Completes once the ad is closed
+  /// (or at once when no ad is shown).
   static Future<void> showInterstitialBetweenLevels(int completedLevel) async {
     if (completedLevel <= 3) return;
     _levelsCompletedSinceLastAd++;
-    if (_levelsCompletedSinceLastAd >= interstitialLevelInterval) {
-      _levelsCompletedSinceLastAd = 0;
-    }
+    if (_levelsCompletedSinceLastAd < interstitialLevelInterval) return;
+    _levelsCompletedSinceLastAd = 0;
+    await interstitial.show();
   }
+
+  /// Restarts the cadence; for tests.
+  @visibleForTesting
+  static void resetInterstitialCadence() => _levelsCompletedSinceLastAd = 0;
 }

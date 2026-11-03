@@ -234,10 +234,7 @@ void main() {
       expect(find.text('951–1000'), findsOneWidget);
       await tester.tap(lastChip);
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('chapter-grid-19')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('chapter-grid-19')), findsOneWidget);
       expect(tile(r'^Level 951, locked'), findsOneWidget);
       // The grid builds lazily; scroll to the last tile of the campaign.
       await tester.scrollUntilVisible(

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/level_pack_loader.dart';
 
+import 'package:arrow_escape/core/ads/ad_service.dart';
 import 'package:arrow_escape/core/storage/storage_service.dart';
 import 'package:arrow_escape/core/audio/sound_service.dart';
 import 'package:arrow_escape/core/audio/haptic_service.dart';
@@ -19,6 +20,7 @@ import 'package:arrow_escape/ui/screens/gameplay_screen.dart';
 import 'package:arrow_escape/ui/screens/welcome_screen.dart';
 import 'package:arrow_escape/ui/widgets/board_widget.dart';
 import 'package:arrow_escape/ui/widgets/level_complete_dialog.dart';
+import 'package:arrow_escape/ui/widgets/out_of_hearts_dialog.dart';
 
 void main() {
   setUpAll(loadLevelPack);
@@ -300,4 +302,66 @@ void main() {
       },
     );
   }
+
+  group('Out of hearts dialog', () {
+    Future<void> pumpDialog(
+      WidgetTester tester,
+      Future<RewardedAdOutcome> Function() onWatchAd, {
+      VoidCallback? onRetry,
+    }) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OutOfHeartsDialog(
+              onWatchAd: onWatchAd,
+              onRetry: onRetry ?? () {},
+              onHome: () {},
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('offers watching an ad before retrying', (tester) async {
+      var retried = false;
+      await pumpDialog(
+        tester,
+        () async => RewardedAdOutcome.rewarded,
+        onRetry: () => retried = true,
+      );
+
+      expect(find.text('Watch Ad to Continue (+1 ❤️)'), findsOneWidget);
+      expect(find.text('Retry Level (3 ❤️)'), findsOneWidget);
+      expect(find.text('Return to Home'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('Retry Level (3 ❤️)'));
+      expect(retried, isTrue);
+    });
+
+    testWidgets('explains when no ad is available and stays open', (
+      tester,
+    ) async {
+      var requests = 0;
+      await pumpDialog(tester, () async {
+        requests++;
+        return RewardedAdOutcome.failed;
+      });
+
+      await tester.tap(find.byKey(const ValueKey('revive-with-ad')));
+      await tester.pump();
+
+      expect(requests, 1);
+      expect(
+        find.text('No ad is available right now. Please try again later.'),
+        findsOneWidget,
+      );
+      expect(find.text('Out of Hearts!'), findsOneWidget);
+      // The player can still try the ad again or retry the level.
+      expect(find.text('Watch Ad to Continue (+1 ❤️)'), findsOneWidget);
+    });
+  });
 }

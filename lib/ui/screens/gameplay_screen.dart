@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/ads/ad_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../game/difficulty.dart';
 import '../../game/game_controller.dart';
@@ -230,6 +231,12 @@ class _GameplayScreenState extends State<GameplayScreen> {
     if (!mounted) return;
     switch (action) {
       case _CompletionAction.next:
+        // Natural break between campaign levels: every few levels an
+        // interstitial may show before the next board loads.
+        if (ctx.isCampaign) {
+          await AdService.showInterstitialBetweenLevels(level.id);
+          if (!mounted) return;
+        }
         _loadNext();
       case _CompletionAction.replay:
         controller.restart();
@@ -244,6 +251,15 @@ class _GameplayScreenState extends State<GameplayScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => OutOfHeartsDialog(
+        reviveHearts: GameController.reviveHearts,
+        onWatchAd: () async {
+          final outcome = await controller.reviveWithAd();
+          if (outcome == RewardedAdOutcome.rewarded && ctx.mounted) {
+            Navigator.of(ctx).pop();
+            _gameOverDialogShowing = false;
+          }
+          return outcome;
+        },
         onRetry: () {
           Navigator.of(ctx).pop();
           _gameOverDialogShowing = false;

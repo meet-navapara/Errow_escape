@@ -3,7 +3,7 @@
 class AppInfo {
   static const String name = 'Arrow Escape';
   static const String version = '1.0.0';
-  static const int buildNumber = 4;
+  static const int buildNumber = 5;
 
   /// Public legal pages (Firebase Hosting, see hosting/README.md). These are
   /// the default Hosting URLs for the Firebase project in
