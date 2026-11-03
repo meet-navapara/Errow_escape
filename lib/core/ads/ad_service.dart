@@ -39,14 +39,15 @@ class NoRewardedAds implements RewardedAdProvider {
 /// Google AdMob rewarded ads, gated by Google UMP consent.
 ///
 /// Ad unit ids: debug builds use Google's public test ids. Release builds use
-/// ids passed with --dart-define (ADMOB_REWARDED_ANDROID / ADMOB_REWARDED_IOS);
-/// without them ads stay unavailable instead of showing test ads in
-/// production.
+/// the production Android unit below, or ids passed with --dart-define
+/// (ADMOB_REWARDED_ANDROID / ADMOB_REWARDED_IOS); without an id ads stay
+/// unavailable instead of showing test ads in production.
 class AdMobRewardedAds implements RewardedAdProvider {
   static const _testAndroid = 'ca-app-pub-3940256099942544/5224354917';
   static const _testIos = 'ca-app-pub-3940256099942544/1712485313';
   static const _releaseAndroid = String.fromEnvironment(
     'ADMOB_REWARDED_ANDROID',
+    defaultValue: 'ca-app-pub-1959480289882936/2000572174',
   );
   static const _releaseIos = String.fromEnvironment('ADMOB_REWARDED_IOS');
 

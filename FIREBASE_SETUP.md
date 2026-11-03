@@ -8,7 +8,7 @@ What is already done in code, and the console steps only you can do.
 | --- | --- |
 | `Firebase.initializeApp()` in `lib/main.dart` | Done. Previously missing, so sign-in and sync never ran. |
 | Google Services Gradle plugin | Applied (`android/settings.gradle.kts`, `android/app/build.gradle.kts`) |
-| `android/app/google-services.json` | Present (project `arrow-escape-85dcd`, package `com.arrowescape.arrow_escape`) |
+| `android/app/google-services.json` | Present (project `arrow-escape-85dcd`, package `com.zylateinfotech.arrowescape`) |
 | Android debug build | Built; on a real device logcat shows `FirebaseApp initialization successful` |
 | Google sign-in on Android | Code complete; **not yet tested end-to-end** (needs SHA fingerprints, below) |
 | iOS Firebase / Google sign-in | **Not configured**: `GoogleService-Info.plist` and URL scheme missing |
@@ -49,7 +49,7 @@ Play Console > Setup > App integrity. Then download the updated
 
 ## 2. iOS
 
-1. Firebase Console > Add app > iOS, bundle id `com.arrowescape.arrowEscape`.
+1. Firebase Console > Add app > iOS, bundle id `com.zylateinfotech.arrowescape`.
 2. Download `GoogleService-Info.plist` and add it to `ios/Runner` **in Xcode**
    (Runner target, "Copy items if needed").
 3. In `ios/Runner/Info.plist` add the URL scheme from the plist's

@@ -58,6 +58,7 @@ class GameController extends ChangeNotifier {
   Arrow? _blockedArrow;
   Arrow? _blockerArrow;
   GridPosition? _blockedAtPosition;
+  int _blockedTapCount = 0;
   String? _feedbackMessage;
   Timer? _feedbackTimer;
 
@@ -121,6 +122,10 @@ class GameController extends ChangeNotifier {
   Arrow? get blockedArrow => _blockedArrow;
   Arrow? get blockerArrow => _blockerArrow;
   GridPosition? get blockedAtPosition => _blockedAtPosition;
+
+  /// Increases on every blocked tap, so the UI can replay the shake even
+  /// when the same arrow is blocked twice in a row.
+  int get blockedTapCount => _blockedTapCount;
   String? get feedbackMessage => _feedbackMessage;
 
   Arrow? get hintedArrow => _hintedArrow;
@@ -239,6 +244,7 @@ class GameController extends ChangeNotifier {
       sound.playBlocked();
       haptic.heavyImpact();
 
+      _blockedTapCount++;
       _blockedArrow = arrow;
       _blockerArrow = result.blocker;
       _blockedAtPosition = result.blockedAt;

@@ -16,13 +16,14 @@ if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
-// AdMob app id. Google's public test id unless -PadmobAppId=... is passed.
+// AdMob app id from android/gradle.properties (admobAppId); Google's public
+// test id if it is missing.
 val admobAppId: String =
     (project.findProperty("admobAppId") as String?)
         ?: "ca-app-pub-3940256099942544~3347511713"
 
 android {
-    namespace = "com.arrowescape.arrow_escape"
+    namespace = "com.zylateinfotech.arrowescape"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -32,7 +33,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.arrowescape.arrow_escape"
+        applicationId = "com.zylateinfotech.arrowescape"
         minSdk = flutter.minSdkVersion
         // Flutter's default is API 36, which Google Play requires for new
         // apps and updates from 31 Aug 2026.
@@ -62,6 +63,10 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

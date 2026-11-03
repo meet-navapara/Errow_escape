@@ -1,4 +1,4 @@
-package com.arrowescape.arrow_escape
+package com.zylateinfotech.arrowescape
 
 import io.flutter.embedding.android.FlutterActivity
 

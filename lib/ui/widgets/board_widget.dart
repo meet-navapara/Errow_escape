@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 
 import '../../models/arrow_model.dart';
 import '../../core/theme/app_colors.dart';
@@ -44,13 +43,17 @@ class _BoardWidgetState extends State<BoardWidget>
   late final AnimationController _resetAnimation;
   late final AnimationController _bumpAnimation;
   late final AnimationController _pulse;
-  late final Ticker _escapeTicker;
   Animation<Matrix4>? _resetTween;
   bool _isZoomed = false;
 
-  final Stopwatch _clock = Stopwatch()..start();
-  final Map<String, (Arrow, int)> _escapeStarts = {};
-  String? _lastBlockedId;
+  /// One independent animation per escaping arrow, keyed by arrow id.
+  final Map<String, (Arrow, AnimationController)> _escapes = {};
+
+  /// Arrows the controller reported as escaping at its last notification.
+  /// Only arrows that newly appear here start an animation, so unrelated
+  /// notifications (another tap, a timer) never restart a running escape.
+  Set<String> _reportedEscapes = const {};
+  int _lastBlockedTap = 0;
 
   @override
   void initState() {
@@ -74,7 +77,7 @@ class _BoardWidgetState extends State<BoardWidget>
       vsync: this,
       duration: const Duration(milliseconds: 260),
     );
-    _escapeTicker = createTicker(_onEscapeTick);
+    _lastBlockedTap = widget.controller.blockedTapCount;
     widget.controller.addListener(_onControllerChanged);
   }
 
@@ -96,7 +99,9 @@ class _BoardWidgetState extends State<BoardWidget>
     _resetAnimation.dispose();
     _bumpAnimation.dispose();
     _pulse.dispose();
-    _escapeTicker.dispose();
+    for (final (_, animation) in _escapes.values) {
+      animation.dispose();
+    }
     super.dispose();
   }
 
@@ -110,28 +115,36 @@ class _BoardWidgetState extends State<BoardWidget>
   }
 
   void _onControllerChanged() {
-    final now = _clock.elapsedMilliseconds;
+    final reported = <String>{};
     for (final arrow in widget.controller.escapingArrows) {
-      _escapeStarts.putIfAbsent(arrow.id, () => (arrow, now));
+      reported.add(arrow.id);
+      if (!_reportedEscapes.contains(arrow.id)) _startEscape(arrow);
     }
-    if (_escapeStarts.isNotEmpty && !_escapeTicker.isActive) {
-      _escapeTicker.start();
-    }
+    _reportedEscapes = reported;
 
-    final blockedId = widget.controller.blockedArrow?.id;
-    if (blockedId != null && blockedId != _lastBlockedId) {
-      _bumpAnimation.forward(from: 0);
-    }
-    _lastBlockedId = blockedId;
+    // Every blocked tap shakes, including a repeat tap on the same arrow.
+    final blockedTap = widget.controller.blockedTapCount;
+    if (blockedTap != _lastBlockedTap) _bumpAnimation.forward(from: 0);
+    _lastBlockedTap = blockedTap;
   }
 
-  void _onEscapeTick(Duration _) {
-    final now = _clock.elapsedMilliseconds;
-    _escapeStarts.removeWhere(
-      (_, v) => now - v.$2 > widget.escapeDuration.inMilliseconds,
+  void _startEscape(Arrow arrow) {
+    // Undo can bring an arrow back and let it escape again before its
+    // previous ghost finished; that old animation is simply replaced.
+    _escapes.remove(arrow.id)?.$2.dispose();
+    final animation = AnimationController(
+      vsync: this,
+      duration: widget.escapeDuration,
     );
-    if (_escapeStarts.isEmpty) _escapeTicker.stop();
-    setState(() {});
+    animation
+      ..addListener(() => setState(() {}))
+      ..addStatusListener((status) {
+        if (status != AnimationStatus.completed) return;
+        if (_escapes[arrow.id]?.$2 == animation) _escapes.remove(arrow.id);
+        animation.dispose();
+      })
+      ..forward();
+    _escapes[arrow.id] = (arrow, animation);
   }
 
   void _onTransformChanged() {
@@ -147,15 +160,10 @@ class _BoardWidgetState extends State<BoardWidget>
     _resetAnimation.forward(from: 0);
   }
 
-  List<EscapingArrow> _currentEscapes() {
-    final now = _clock.elapsedMilliseconds;
-    final total = widget.escapeDuration.inMilliseconds;
-    return [
-      for (final (arrow, start) in _escapeStarts.values)
-        if (now - start <= total)
-          EscapingArrow(arrow, total == 0 ? 1 : (now - start) / total),
-    ];
-  }
+  List<EscapingArrow> _currentEscapes() => [
+    for (final (arrow, animation) in _escapes.values)
+      EscapingArrow(arrow, animation.value),
+  ];
 
   @override
   Widget build(BuildContext context) {
